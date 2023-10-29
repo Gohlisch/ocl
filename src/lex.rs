@@ -1,5 +1,6 @@
 
 use std::ops::Range;
+use crate::parsing_error::ParsingError;
 use crate::token::{KeywordVariation, OperatorVariation, Token};
 use crate::token::KeywordVariation::{*};
 use crate::token::LiteralVariation::{Integer, Real, String};
@@ -10,13 +11,6 @@ const NUMBER_LITERAL_CHARS: Range<char> = '0'..'9';
 const OPERATOR_OR_COMMENT_CHARS: [char; 20] = ['.' , '*' ,'+' ,'-' ,'/' ,'<' ,'>' ,'<' ,'>' ,'=' ,':' ,',' ,'(' ,')' ,'{' ,'}' ,'[' ,']' ,'|' ,'@'];
 const OPERATOR_FOLLOW_UP: [char; 4] = ['.', '>', '=' ,':'];
 const IGNORED_WHITE_SPACE_CHARACTERS: [char; 4] = [' ', '\n', '\t', '\r'];
-
-#[derive(Debug)]
-pub struct ParsingError<'a> {
-    msg: &'a str,
-    from: usize,
-    to: usize
-}
 
 pub fn lex(input: &str) -> Result<Vec<Token<'_>>, ParsingError<'_>> {
     let mut start_of_token: usize = 0;
@@ -103,12 +97,12 @@ pub fn lex(input: &str) -> Result<Vec<Token<'_>>, ParsingError<'_>> {
         }
 
         if is_part_of_keyword_or_identifier(char) {
-            'inner_look_for_non_identifier_or_keyword: loop {
+            'inner_look_for_end_of_identifier_or_keyword: loop {
                 end_of_token += 1;
                 if end_of_token >= input.len() {break 'outer;}
 
                 let current_char = input.chars().nth(end_of_token).unwrap();
-                if !is_part_of_keyword_or_identifier(current_char) { break 'inner_look_for_non_identifier_or_keyword; }
+                if !is_part_of_keyword_or_identifier(current_char) { break 'inner_look_for_end_of_identifier_or_keyword; }
             }
             if let Some(keyword) = check_keyword(&input[start_of_token .. end_of_token]) {
                 tokens.push(Token::Keyword(keyword));
@@ -212,11 +206,11 @@ mod tests {
     }
 
     #[test]
-    fn lex_simple_invariant_with_contextual_instance() -> Result<(), ParsingError<'static>> {
-        let simple_invariant = "context Company inv:
+    fn lex_invariant_with_contextual_instance() -> Result<(), ParsingError<'static>> {
+        let invariant_with_context_instance = "context Company inv:
 self.numberOfEmployees > 50";
 
-        let tokens = lex(simple_invariant)?;
+        let tokens = lex(invariant_with_context_instance)?;
 
         assert_eq!(tokens.len(), 9);
         assert!(matches!(tokens.get(0), Some(Token::Keyword(Context))));
@@ -232,11 +226,11 @@ self.numberOfEmployees > 50";
     }
 
     #[test]
-    fn lex_simple_invariant_with_named_contextual_instance() -> Result<(), ParsingError<'static>> {
-        let simple_invariant = "context c : Company inv:
+    fn lex_invariant_with_named_contextual_instance() -> Result<(), ParsingError<'static>> {
+        let invariant_with_named_contextual_instance = "context c : Company inv:
 c.numberOfEmployees > 50";
 
-        let tokens = lex(simple_invariant)?;
+        let tokens = lex(invariant_with_named_contextual_instance)?;
 
         assert_eq!(tokens.len(), 11);
         assert!(matches!(tokens.get(0), Some(Token::Keyword(Context))));
@@ -255,10 +249,10 @@ c.numberOfEmployees > 50";
 
     #[test]
     fn lex_named_invariant_with_named_contextual_instance() -> Result<(), ParsingError<'static>> {
-        let simple_invariant = "context c : Company inv enoughEmployees:
+        let named_invariant = "context c : Company inv enoughEmployees:
 c.numberOfEmployees > 50";
 
-        let tokens = lex(simple_invariant)?;
+        let tokens = lex(named_invariant)?;
 
         assert_eq!(tokens.len(), 12);
         assert!(matches!(tokens.get(0), Some(Token::Keyword(Context))));

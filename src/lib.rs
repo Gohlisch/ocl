@@ -1,5 +1,7 @@
 mod lex;
 mod token;
+mod parse;
+mod parsing_error;
 
 pub fn add(left: usize, right: usize) -> usize {
     left + right
