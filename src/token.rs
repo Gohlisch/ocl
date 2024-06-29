@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum Token<'a> {
     Keyword(KeywordVariation),
     Identifier(&'a str),
@@ -8,6 +9,7 @@ pub enum Token<'a> {
 /**
 * As specified in the OCL specification chapter 7.4
 */
+#[derive(Copy, Clone, Debug)]
 pub enum LiteralVariation<'a> {
     String(&'a str),
     Integer(i64),
@@ -17,6 +19,7 @@ pub enum LiteralVariation<'a> {
 /**
 * As specified in the OCL specification chapter 7.4.9 and 7.4.10
 */
+#[derive(Copy, Clone, Debug)]
 pub enum OperatorVariation {
     Point,
     DoublePoint,
@@ -44,10 +47,10 @@ pub enum OperatorVariation {
     AtPre,
 }
 
-
 /**
  * As specified in the OCL specification chapter 7.4.11
  */
+#[derive(Copy, Clone, Debug)]
 pub enum KeywordVariation {
     And,
     Body,
@@ -75,5 +78,5 @@ pub enum KeywordVariation {
     Static,
     Then,
     True,
-    Xor
+    Xor,
 }
