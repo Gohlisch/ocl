@@ -2,8 +2,11 @@ use crate::lex::lex;
 use crate::parse::RValueVariant::Identifier;
 use crate::parse::Statement::RValue;
 use crate::token::{KeywordVariation, LiteralVariation, OperatorVariation, Token};
+use std::borrow::BorrowMut;
 use std::collections::VecDeque;
 use std::ptr::null_mut;
+
+type SyntaxError = String;
 
 pub struct AbstractSyntaxTree<'a> {
     pub root: AbstractSyntaxTreeNode<'a>,
@@ -20,10 +23,6 @@ impl<'a> AbstractSyntaxTreeNode<'a> {
             parent: null_mut(),
             statement,
         }
-    }
-
-    fn on_statement(self, run: fn(&Statement<'a>)) {
-        run(&self.statement)
     }
 }
 
@@ -46,7 +45,7 @@ pub enum RValueVariant<'a> {
 pub struct ParameterList<'a>(Vec<RValueVariant<'a>>);
 
 impl<'a> AbstractSyntaxTree<'a> {
-    pub fn from(input: &'a str) -> Self {
+    pub fn from(input: &'a str) -> Result<Self, SyntaxError> {
         let tokens = lex(input).expect(format!("'{input}' is not a valid ocl string.").as_str());
         let mut stack: VecDeque<AbstractSyntaxTreeNode> = VecDeque::from([]);
 
@@ -121,7 +120,9 @@ impl<'a> AbstractSyntaxTree<'a> {
                     OperatorVariation::DoublePoint => {}
                     OperatorVariation::Arrow => {}
                     OperatorVariation::Star => {}
-                    OperatorVariation::Plus => {}
+                    OperatorVariation::Plus => {
+                        push_binary_operation(&mut stack, OperatorVariation::Plus)?;
+                    }
                     OperatorVariation::Minus => {}
                     OperatorVariation::Slash => {}
                     OperatorVariation::LessThan => {}
@@ -151,15 +152,33 @@ impl<'a> AbstractSyntaxTree<'a> {
             i += 1;
         }
 
-        AbstractSyntaxTree {
+        Ok(AbstractSyntaxTree {
             root: stack.pop_back().expect("Stack sollte nicht leer sein."),
-        }
+        })
+    }
+}
+
+fn push_binary_operation(
+    stack: &mut VecDeque<AbstractSyntaxTreeNode>,
+    variation: OperatorVariation,
+) -> Result<(), SyntaxError> {
+    if let Some(mut left_hand_operand) = stack.pop_back() {
+        let operation = AbstractSyntaxTreeNode::new(Statement::BinaryOperation(
+            &mut left_hand_operand,
+            variation,
+            null_mut(),
+        ));
+        stack.push_back(operation);
+        Ok(())
+    } else {
+        Err(String::from(format!(
+            "Excpected left hand operand but found nothing."
+        )))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::borrow::Borrow;
 
     use crate::parse::AbstractSyntaxTree;
     use crate::parse::RValueVariant;
@@ -167,19 +186,37 @@ mod tests {
     use crate::parsing_error::ParsingError;
     use crate::token::LiteralVariation;
 
+    use super::SyntaxError;
+
     #[test]
-    fn parsed_string_literal() -> Result<(), ParsingError<'static>> {
+    fn parsed_string_literal() -> Result<(), SyntaxError> {
         let simple_invariant = "\"I am a String\"";
 
-        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant);
+        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
 
-        let node = &(tree.root.statement);
+        let node = tree.root.statement;
 
         assert!(matches!(
             node,
             RValue(RValueVariant::Literal(LiteralVariation::String(
                 simple_invariant
             )))
+        ));
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_int_literal() -> Result<(), SyntaxError> {
+        let simple_invariant = "42";
+
+        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
+
+        let node = tree.root.statement;
+
+        assert!(matches!(
+            node,
+            RValue(RValueVariant::Literal(LiteralVariation::Integer(42)))
         ));
 
         Ok(())
@@ -196,15 +233,15 @@ mod tests {
     //     Ok(())
     // }
 
-    // #[test]
-    // fn parse_simple_invariant_2() -> Result<(), ParsingError<'static>> {
-    //     let simple_invariant = "10 + 20";
+    #[test]
+    fn parse_simple_invariant_2() -> Result<(), ParsingError<'static>> {
+        let simple_invariant = "10 + 20";
 
-    //     let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant);
+        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant);
 
-    //     let node = tree.root;
-    //     assert!(matches!(node.statement, BinaryOperation(_, _, _)));
+        let node = tree.root;
+        assert!(matches!(node.statement, BinaryOperation(_, _, _)));
 
-    //     Ok(())
-    // }
+        Ok(())
+    }
 }
