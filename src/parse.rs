@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use std::ptr::null_mut;
 
 pub struct AbstractSyntaxTree<'a> {
-    pub root: &'a AbstractSyntaxTreeNode<'a>,
+    pub root: AbstractSyntaxTreeNode<'a>,
 }
 
 pub struct AbstractSyntaxTreeNode<'a> {
@@ -46,7 +46,7 @@ pub enum RValueVariant<'a> {
 pub struct ParameterList<'a>(Vec<RValueVariant<'a>>);
 
 impl<'a> AbstractSyntaxTree<'a> {
-    pub fn from(input: &str) -> Self {
+    pub fn from(input: &'a str) -> Self {
         let tokens = lex(input).expect(format!("'{input}' is not a valid ocl string.").as_str());
         let mut stack: VecDeque<AbstractSyntaxTreeNode> = VecDeque::from([]);
 
@@ -147,10 +147,12 @@ impl<'a> AbstractSyntaxTree<'a> {
                     statement: RValue(RValueVariant::Literal(*token)),
                 }),
             }
+
+            i += 1;
         }
 
         AbstractSyntaxTree {
-            root: stack.back().expect("Stack sollte nicht leer sein."),
+            root: stack.pop_back().expect("Stack sollte nicht leer sein."),
         }
     }
 }
@@ -167,16 +169,16 @@ mod tests {
 
     #[test]
     fn parsed_string_literal() -> Result<(), ParsingError<'static>> {
-        let simple_invariant = "'I am a String'";
+        let simple_invariant = "\"I am a String\"";
 
         let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant);
 
-        let node = unsafe { &(&*tree.root).statement };
+        let node = &(tree.root.statement);
 
         assert!(matches!(
             node,
             RValue(RValueVariant::Literal(LiteralVariation::String(
-                "'I am a String'"
+                simple_invariant
             )))
         ));
 
