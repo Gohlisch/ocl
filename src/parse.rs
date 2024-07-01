@@ -1,6 +1,6 @@
 use crate::lex::lex;
 use crate::parse::RValueVariant::Identifier;
-use crate::parse::Statement::RValue;
+use crate::parse::Statement::{BinaryOperation, RValue};
 use crate::token::{KeywordVariation, LiteralVariation, OperatorVariation, Token};
 use std::borrow::BorrowMut;
 use std::collections::VecDeque;
@@ -13,14 +13,12 @@ pub struct AbstractSyntaxTree<'a> {
 }
 
 pub struct AbstractSyntaxTreeNode<'a> {
-    parent: *mut AbstractSyntaxTreeNode<'a>,
     statement: Statement<'a>,
 }
 
 impl<'a> AbstractSyntaxTreeNode<'a> {
     fn new(statement: Statement<'a>) -> Self {
         AbstractSyntaxTreeNode {
-            parent: null_mut(),
             statement,
         }
     }
@@ -56,7 +54,6 @@ impl<'a> AbstractSyntaxTree<'a> {
             match token {
                 Token::Identifier(name) => match name {
                     _ => stack.push_back(AbstractSyntaxTreeNode {
-                        parent: null_mut(),
                         statement: RValue(Identifier(name)),
                     }),
                 },
@@ -143,10 +140,7 @@ impl<'a> AbstractSyntaxTree<'a> {
                     OperatorVariation::Pipe => {}
                     OperatorVariation::AtPre => {}
                 },
-                Token::Literal(token) => stack.push_back(AbstractSyntaxTreeNode {
-                    parent: null_mut(),
-                    statement: RValue(RValueVariant::Literal(*token)),
-                }),
+                Token::Literal(token) => push_rvalue(&mut stack, *token)?,
             }
 
             i += 1;
@@ -156,6 +150,7 @@ impl<'a> AbstractSyntaxTree<'a> {
             root: stack.pop_back().expect("Stack sollte nicht leer sein."),
         })
     }
+
 }
 
 fn push_binary_operation(
@@ -171,9 +166,28 @@ fn push_binary_operation(
         stack.push_back(operation);
         Ok(())
     } else {
-        Err(String::from(format!(
-            "Excpected left hand operand but found nothing."
-        )))
+        Err("Excpected left hand operand but found nothing.".to_string())
+    }
+}
+
+
+fn push_rvalue<'a>(stack: & mut VecDeque<AbstractSyntaxTreeNode<'a>>, token: LiteralVariation<'a>) -> Result<(), SyntaxError> {
+    if let Some(mut node) = stack.back_mut() {
+        match node.statement {
+            BinaryOperation(lhs, op, right_hand_value) => {
+                if right_hand_value.is_null() {
+                    node.statement = BinaryOperation(lhs, op, &mut AbstractSyntaxTreeNode::new(RValue(RValueVariant::Literal(token))));
+                    Ok(())
+                }
+                else { Err("A RValue cannot be applied to another RValue. TODO: Bessere Beschreibung.".to_string()) }
+            }
+            _ => Err("A RValue cannot be applied to another RValue. TODO: Bessere Beschreibung.".to_string())
+        }
+    } else {
+        stack.push_back(AbstractSyntaxTreeNode {
+            statement: RValue(RValueVariant::Literal(token)),
+        });
+        Ok(())
     }
 }
 
@@ -234,10 +248,10 @@ mod tests {
     // }
 
     #[test]
-    fn parse_simple_invariant_2() -> Result<(), ParsingError<'static>> {
+    fn parse_plus() -> Result<(), SyntaxError> {
         let simple_invariant = "10 + 20";
 
-        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant);
+        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
 
         let node = tree.root;
         assert!(matches!(node.statement, BinaryOperation(_, _, _)));
