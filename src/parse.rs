@@ -8,6 +8,7 @@ use std::ptr::null_mut;
 
 type SyntaxError = String;
 
+
 pub struct AbstractSyntaxTree<'a> {
     pub root: AbstractSyntaxTreeNode<'a>,
 }
@@ -49,7 +50,7 @@ impl<'a> AbstractSyntaxTree<'a> {
 
         let mut i = 0;
         while i < tokens.len() {
-            let token = unsafe { tokens.get_unchecked(i) };
+            let token = unsafe { tokens.get_unchecked(i) }; // should be safe as line 51 checked whether there are any elements left.
 
             match token {
                 Token::Identifier(name) => match name {
@@ -116,18 +117,18 @@ impl<'a> AbstractSyntaxTree<'a> {
                     }
                     OperatorVariation::DoublePoint => {}
                     OperatorVariation::Arrow => {}
-                    OperatorVariation::Star => {}
-                    OperatorVariation::Plus => {
-                        push_binary_operation(&mut stack, OperatorVariation::Plus)?;
+                    operator @ (OperatorVariation::Star
+                    | OperatorVariation::Plus
+                    | OperatorVariation::Minus
+                    | OperatorVariation::Slash
+                    | OperatorVariation::LessThan
+                    | OperatorVariation::GreaterThan
+                    | OperatorVariation::LessThanEqual
+                    | OperatorVariation::GreaterThanEqual
+                    | OperatorVariation::Equals
+                    | OperatorVariation::Unequals)  => {
+                        push_binary_operation(&mut stack, *operator)?;
                     }
-                    OperatorVariation::Minus => {}
-                    OperatorVariation::Slash => {}
-                    OperatorVariation::LessThan => {}
-                    OperatorVariation::GreaterThan => {}
-                    OperatorVariation::LessThanEqual => {}
-                    OperatorVariation::GreaterThanEqual => {}
-                    OperatorVariation::Equals => {}
-                    OperatorVariation::Unequals => {}
                     OperatorVariation::Colon => {}
                     OperatorVariation::DoubleColon => {}
                     OperatorVariation::Comma => {}
@@ -194,7 +195,8 @@ fn push_rvalue<'a>(stack: & mut VecDeque<AbstractSyntaxTreeNode<'a>>, token: Lit
 #[cfg(test)]
 mod tests {
 
-    use crate::parse::AbstractSyntaxTree;
+    use crate::parse::{AbstractSyntaxTree, Statement};
+    use crate::parse::AbstractSyntaxTreeNode;
     use crate::parse::RValueVariant;
     use crate::parse::Statement::*;
     use crate::parsing_error::ParsingError;
@@ -254,6 +256,34 @@ mod tests {
         let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
 
         let node = tree.root;
+        assert!(matches!(node.statement, BinaryOperation(_, _, _)));
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_plus() -> Result<(), SyntaxError> {
+        let simple_invariant = "10 + 20 * 30";
+
+        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
+
+        let node = tree.root;
+
+        unsafe {
+            match node.statement {
+                BinaryOperation(lhs, operator, rhs) => {
+                    match ((*lhs).statement) {
+                        RValue(LiteralVariation::Integer(10)) => {}
+                        _ => assert!(false)
+                    }
+
+                    match operator {
+                        BinaryOperation()
+                    }
+                }
+                _ => assert!(false)
+            }
+        }
         assert!(matches!(node.statement, BinaryOperation(_, _, _)));
 
         Ok(())
