@@ -35,6 +35,15 @@ pub enum Statement<'a> {
     RValue(RValueVariant<'a>),
 }
 
+impl<'a> Statement<'a> {
+    fn is_int_literal(self: &Self, expected: i64) -> bool {
+        return match self {
+            RValue(RValueVariant::Literal(LiteralVariation::Integer(actual))) => *actual == expected,
+            _ => false
+        }
+    }
+}
+
 pub enum RValueVariant<'a> {
     Literal(LiteralVariation<'a>),
     Identifier(&'a str),
@@ -230,10 +239,7 @@ mod tests {
 
         let node = tree.root.statement;
 
-        assert!(matches!(
-            node,
-            RValue(RValueVariant::Literal(LiteralVariation::Integer(42)))
-        ));
+        assert!(node.is_int_literal(42));
 
         Ok(())
     }
@@ -261,7 +267,7 @@ mod tests {
         Ok(())
     }
 
-    #[test]
+/*     #[test]
     fn parse_plus() -> Result<(), SyntaxError> {
         let simple_invariant = "10 + 20 * 30";
 
@@ -272,13 +278,15 @@ mod tests {
         unsafe {
             match node.statement {
                 BinaryOperation(lhs, operator, rhs) => {
-                    match ((*lhs).statement) {
+                    match (*lhs).statement {
                         RValue(LiteralVariation::Integer(10)) => {}
                         _ => assert!(false)
                     }
 
                     match operator {
-                        BinaryOperation()
+                        BinaryOperation(lhs, op, rhs) => {
+                            assert!(matches!((*lhs).statement, ))
+                        }
                     }
                 }
                 _ => assert!(false)
@@ -287,5 +295,5 @@ mod tests {
         assert!(matches!(node.statement, BinaryOperation(_, _, _)));
 
         Ok(())
-    }
+    } */
 }
