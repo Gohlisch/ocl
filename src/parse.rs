@@ -42,6 +42,13 @@ impl<'a> Statement<'a> {
             _ => false
         }
     }
+
+    fn is_string_literal(self: &Self, expected: &str) -> bool {
+        return match self {
+            RValue(RValueVariant::Literal(LiteralVariation::String(actual))) => *actual == expected,
+            _ => false
+        }
+    }
 }
 
 pub enum RValueVariant<'a> {
