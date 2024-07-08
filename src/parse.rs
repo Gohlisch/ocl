@@ -228,12 +228,7 @@ mod tests {
 
         let node = tree.root.statement;
 
-        assert!(matches!(
-            node,
-            RValue(RValueVariant::Literal(LiteralVariation::String(
-                simple_invariant
-            )))
-        ));
+        assert!(node.is_string_literal("I am a String"));
 
         Ok(())
     }

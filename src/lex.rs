@@ -60,7 +60,7 @@ pub fn lex(input: &str) -> Result<Vec<Token<'_>>, ParsingError<'_>> {
                 let current_char = input.chars().nth(end_of_token).unwrap();
                 if current_char == '"' { break 'inner_look_for_end_of_string; }
             }
-            tokens.push(Token::Literal(String(&input[start_of_token .. end_of_token])));
+            tokens.push(Token::Literal(String(&input[start_of_token+1 .. end_of_token])));
             end_of_token += 1;
             continue 'outer;
         }
@@ -266,6 +266,16 @@ c.numberOfEmployees > 50";
         assert!(matches!(tokens.get(9), Some(Token::Identifier("numberOfEmployees"))));
         assert!(matches!(tokens.get(10), Some(Token::Operator(OperatorVariation::GreaterThan))));
         assert!(matches!(tokens.get(11), Some(Token::Literal(LiteralVariation::Integer(50)))));
+        Ok(())
+    }
+    #[test]
+    fn lex_string_literal() -> Result<(), ParsingError<'static>> {
+        let simple_invariant = "\"this is a string.\"";
+
+        let tokens = lex(simple_invariant)?;
+
+        assert_eq!(tokens.len(), 1);
+        assert!(matches!(tokens.get(0), Some(Token::Literal(String("this is a string.")))));
         Ok(())
     }
 }
