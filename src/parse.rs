@@ -1,50 +1,39 @@
+use std::borrow::BorrowMut;
+use std::collections::VecDeque;
+use std::mem;
+
 use crate::lex::lex;
 use crate::parse::RValueVariant::Identifier;
 use crate::parse::Statement::{BinaryOperation, RValue};
-use crate::token::{KeywordVariation, LiteralVariation, OperatorVariation, Token};
-use std::borrow::BorrowMut;
-use std::collections::VecDeque;
-use std::ptr::null_mut;
+use crate::token::{LiteralVariation, OperatorVariation, Token};
 
 type SyntaxError = String;
 
 
 pub struct AbstractSyntaxTree<'a> {
-    pub root: AbstractSyntaxTreeNode<'a>,
-}
-
-pub struct AbstractSyntaxTreeNode<'a> {
-    statement: Statement<'a>,
-}
-
-impl<'a> AbstractSyntaxTreeNode<'a> {
-    fn new(statement: Statement<'a>) -> Self {
-        AbstractSyntaxTreeNode {
-            statement,
-        }
-    }
+    pub root: Option<Statement<'a>>,
 }
 
 pub enum Statement<'a> {
-    UnaryOperation(OperatorVariation, *mut AbstractSyntaxTreeNode<'a>),
-    BinaryOperation(
-        *mut AbstractSyntaxTreeNode<'a>,
-        OperatorVariation,
-        *mut AbstractSyntaxTreeNode<'a>,
-    ),
+    UnaryOperation(OperatorVariation, Option<Box<Statement<'a>>>),
+    BinaryOperation {
+        lhs: Option<Box<Statement<'a>>>,
+        operator: OperatorVariation,
+        rhs: Option<Box<Statement<'a>>>,
+    },
     RValue(RValueVariant<'a>),
 }
 
 impl<'a> Statement<'a> {
     fn is_int_literal(self: &Self, expected: i64) -> bool {
-        return match self {
+        match self {
             RValue(RValueVariant::Literal(LiteralVariation::Integer(actual))) => *actual == expected,
             _ => false
         }
     }
 
     fn is_string_literal(self: &Self, expected: &str) -> bool {
-        return match self {
+        match self {
             RValue(RValueVariant::Literal(LiteralVariation::String(actual))) => *actual == expected,
             _ => false
         }
@@ -61,19 +50,15 @@ pub struct ParameterList<'a>(Vec<RValueVariant<'a>>);
 
 impl<'a> AbstractSyntaxTree<'a> {
     pub fn from(input: &'a str) -> Result<Self, SyntaxError> {
-        let tokens = lex(input).expect(format!("'{input}' is not a valid ocl string.").as_str());
-        let mut stack: VecDeque<AbstractSyntaxTreeNode> = VecDeque::from([]);
+        let tokens = lex(input).unwrap_or_else(|_| panic!("'{input}' is not a valid ocl string."));
+        let mut stack: VecDeque<Statement<'a>> = VecDeque::from([]);
 
         let mut i = 0;
         while i < tokens.len() {
-            let token = unsafe { tokens.get_unchecked(i) }; // should be safe as line 51 checked whether there are any elements left.
+            let token = tokens.get(i).expect("Popped more tokens than were given!");
 
             match token {
-                Token::Identifier(name) => match name {
-                    _ => stack.push_back(AbstractSyntaxTreeNode {
-                        statement: RValue(Identifier(name)),
-                    }),
-                },
+                Token::Identifier(name) => stack.push_back(RValue(Identifier(name))),
                 Token::Keyword(token) => todo!(),
                 // Token::Keyword(token) => match token {
                 //     KeywordVariation::And => {}
@@ -114,14 +99,14 @@ impl<'a> AbstractSyntaxTree<'a> {
                         // match next_token {
                         //     Token::Identifier(identifier) => match stack.back().expect("The point operator '.' can only be used on a litaral, identifier or the result of another operation.") {
                         //                         Statement::UnaryOperation(operator, operand) => {
-                        //                             let unary_operator_node = &mut AbstractSyntaxTreeNode{
+                        //                             let unary_operator_statement = &mut AbstractSyntaxTreeNode{
                         //                                 parent: null_mut(),
                         //                                 statement: RValue(RValueVariant::Identifier(identifier))
                         //                             };
 
-                        //                             let navigation_operation_node = &mut AbstractSyntaxTreeNode{
+                        //                             let navigation_operation_statement = &mut AbstractSyntaxTreeNode{
                         //                                 parent: null_mut(),
-                        //                                 statement: Statement::BinaryOperation(*operand, *token, unary_operator_node),
+                        //                                 statement: Statement::BinaryOperation(*operand, *token, unary_operator_statement),
                         //                             };
                         //                             stack.push_back()
                         //                         },
@@ -164,22 +149,22 @@ impl<'a> AbstractSyntaxTree<'a> {
         }
 
         Ok(AbstractSyntaxTree {
-            root: stack.pop_back().expect("Stack sollte nicht leer sein."),
+            root: stack.pop_back(),
         })
     }
 
 }
 
 fn push_binary_operation(
-    stack: &mut VecDeque<AbstractSyntaxTreeNode>,
+    stack: &mut VecDeque<Statement>,
     variation: OperatorVariation,
 ) -> Result<(), SyntaxError> {
-    if let Some(mut left_hand_operand) = stack.pop_back() {
-        let operation = AbstractSyntaxTreeNode::new(Statement::BinaryOperation(
-            &mut left_hand_operand,
-            variation,
-            null_mut(),
-        ));
+    if let Some(left_hand_operand) = stack.pop_back() {
+        let operation = BinaryOperation{
+            lhs: Some(Box::new(left_hand_operand)),
+            operator: variation,
+            rhs: None,
+        };
         stack.push_back(operation);
         Ok(())
     } else {
@@ -188,35 +173,32 @@ fn push_binary_operation(
 }
 
 
-fn push_rvalue<'a>(stack: & mut VecDeque<AbstractSyntaxTreeNode<'a>>, token: LiteralVariation<'a>) -> Result<(), SyntaxError> {
-    if let Some(mut node) = stack.back_mut() {
-        match node.statement {
-            BinaryOperation(lhs, op, right_hand_value) => {
-                if right_hand_value.is_null() {
-                    node.statement = BinaryOperation(lhs, op, &mut AbstractSyntaxTreeNode::new(RValue(RValueVariant::Literal(token))));
-                    Ok(())
+fn push_rvalue<'a>(stack: & mut VecDeque<Statement<'a>>, token: LiteralVariation<'a>) -> Result<(), SyntaxError> {
+    if let Some(prior_statement) = stack.back_mut() {
+        match prior_statement {
+            BinaryOperation { rhs, .. } => {
+                match rhs {
+                    None => {
+                        let _ = mem::replace(rhs, Some(Box::new(RValue(RValueVariant::Literal(token)))));
+                        Ok(())
+                    }
+                    _ => { Err("A RValue cannot be applied to another RValue. TODO: Bessere Beschreibung.".to_string()) }
                 }
-                else { Err("A RValue cannot be applied to another RValue. TODO: Bessere Beschreibung.".to_string()) }
             }
             _ => Err("A RValue cannot be applied to another RValue. TODO: Bessere Beschreibung.".to_string())
         }
     } else {
-        stack.push_back(AbstractSyntaxTreeNode {
-            statement: RValue(RValueVariant::Literal(token)),
-        });
+        stack.push_back(RValue(RValueVariant::Literal(token)));
         Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-
-    use crate::parse::{AbstractSyntaxTree, Statement};
-    use crate::parse::AbstractSyntaxTreeNode;
-    use crate::parse::RValueVariant;
+    use crate::parse::AbstractSyntaxTree;
+    use crate::parse::RValueVariant::Literal;
     use crate::parse::Statement::*;
-    use crate::parsing_error::ParsingError;
-    use crate::token::LiteralVariation;
+    use crate::token::{LiteralVariation, OperatorVariation};
 
     use super::SyntaxError;
 
@@ -226,11 +208,12 @@ mod tests {
 
         let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
 
-        let node = tree.root.statement;
-
-        assert!(node.is_string_literal("I am a String"));
-
-        Ok(())
+        if let Some(statement) = tree.root {
+            assert!(statement.is_string_literal("I am a String"));
+            Ok(())
+        } else {
+            Err("No root statement found!".to_string())
+        }
     }
 
     #[test]
@@ -239,63 +222,38 @@ mod tests {
 
         let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
 
-        let node = tree.root.statement;
-
-        assert!(node.is_int_literal(42));
-
-        Ok(())
+        if let Some(statement) = tree.root {
+            assert!(statement.is_int_literal(42));
+            Ok(())
+        } else {
+            Err("No root statement found!".to_string())
+        }
     }
-    // #[test]
-    // fn parse_simple_invariant() -> Result<(), ParsingError<'static>> {
-    //     let simple_invariant = "self.numberOfEmployees > 50";
-
-    //     let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant);
-
-    //     let node = tree.root;
-    //     assert!(matches!(node.statement, BinaryOperation(_, _, _)));
-
-    //     Ok(())
-    // }
-
+    
     #[test]
     fn parse_plus() -> Result<(), SyntaxError> {
         let simple_invariant = "10 + 20";
 
         let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
 
-        let node = tree.root;
-        assert!(matches!(node.statement, BinaryOperation(_, _, _)));
-
-        Ok(())
-    }
-
-/*     #[test]
-    fn parse_plus() -> Result<(), SyntaxError> {
-        let simple_invariant = "10 + 20 * 30";
-
-        let tree: AbstractSyntaxTree = AbstractSyntaxTree::from(simple_invariant)?;
-
-        let node = tree.root;
-
-        unsafe {
-            match node.statement {
-                BinaryOperation(lhs, operator, rhs) => {
-                    match (*lhs).statement {
-                        RValue(LiteralVariation::Integer(10)) => {}
-                        _ => assert!(false)
-                    }
-
-                    match operator {
-                        BinaryOperation(lhs, op, rhs) => {
-                            assert!(matches!((*lhs).statement, ))
-                        }
+        if let Some(statement) = tree.root {
+            assert!(match statement {
+                BinaryOperation { lhs, operator, rhs } => {
+                    (match lhs {
+                        Some(statement) => matches!(*statement, RValue(Literal(LiteralVariation::Integer(10)))),
+                        _ => false
+                    })
+                    && matches!(operator, OperatorVariation::Plus)
+                    && match rhs {
+                        Some(statement) => matches!(*statement, RValue(Literal(LiteralVariation::Integer(20)))),
+                        _ => false
                     }
                 }
-                _ => assert!(false)
-            }
+                _ => false
+            });
+            Ok(())
+        } else {
+            Err("No root statement found!".to_string())
         }
-        assert!(matches!(node.statement, BinaryOperation(_, _, _)));
-
-        Ok(())
-    } */
+    }
 }
